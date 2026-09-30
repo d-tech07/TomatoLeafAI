@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#166534">
+  <meta name="description" content="TomatoLeafAI: photograph a tomato leaf and get a disease diagnosis, a Grad-CAM explanation and treatment advice.">
+  <title>TomatoLeafAI</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css?v=21">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="top-inner">
+    <a class="brand" href="/">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M17 8C8 10 5.9 16.17 3.82 21.34l1.89.66.95-2.3c.48.17.98.3 1.34.3C19 20 22 3 22 3c-1 2-8 2.25-13 3.25S2 11.5 2 13.5s1.75 3.75 1.75 3.75C7 8 17 8 17 8Z"/></svg></span>
+      <span><b>TomatoLeafAI</b><small>Leaf disease diagnosis</small></span>
+    </a>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab active" role="tab" aria-selected="true" data-tab="diagnose">Diagnose</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="history">History <span id="hist-count" class="count" hidden></span></button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="models">Models</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="diseases">Diseases</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="about">About</button>
+    </nav>
+    <div class="top-actions">
+      <span class="pill {{ 'ok' if models else 'warn' }}" title="{{ status.gate_mode }}">{{ models|length }} models {{ 'ready' if models else '— setup needed' }}</span>
+      <button id="theme" class="icon-btn" aria-label="Toggle dark mode">◐</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <!-- ============================ DIAGNOSE ============================ -->
+  <section id="tab-diagnose" class="panel active" role="tabpanel">
+    {% if not models %}
+    <div class="banner warn"><b>No models installed.</b> Put the exported <code>models_litert/</code> folder next to <code>app.py</code>, or set <code>MODEL_BASE_URL</code> (see README). Pages still load; diagnosis needs the models.</div>
+    {% endif %}
+    <div class="grid">
+      <form id="form" class="card" autocomplete="off">
+        <ol class="steps-mini"><li>Photo</li><li>Model</li><li>Diagnose</li></ol>
+        <label id="drop" class="drop" for="file">
+          <input id="file" type="file" accept="image/*">
+          <span id="drop-empty" class="drop-empty">
+            <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path fill="currentColor" d="M12 16a1 1 0 0 1-1-1V7.41l-2.3 2.3a1 1 0 1 1-1.4-1.42l4-4a1 1 0 0 1 1.4 0l4 4a1 1 0 0 1-1.4 1.42L13 7.41V15a1 1 0 0 1-1 1Zm-7 2a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1Z"/></svg>
+            <b>Choose a leaf photo</b><small>Tap to browse · drag &amp; drop · paste</small>
+          </span>
+          <img id="preview" alt="Selected photo" hidden>
+        </label>
+        <p id="file-info" class="muted small" hidden></p>
+        <div class="row">
+          <button type="button" id="camera-btn" class="btn soft">📷 Camera</button>
+          <input id="camera-file" type="file" accept="image/*" capture="environment" hidden>
+          <button type="button" id="clear-btn" class="btn soft" hidden>Remove</button>
+        </div>
+        <div class="field">
+          <span class="label">Run with</span>
+          <div class="seg" role="radiogroup">
+            <label><input type="radio" name="mode" value="single" checked><span>One model</span></label>
+            <label><input type="radio" name="mode" value="compare"><span>Compare all {{ models|length }}</span></label>
+          </div>
+        </div>
+        <div class="field" id="model-field">
+          <label class="label" for="model">Model</label>
+          <select id="model">
+            {% for m in models %}<option value="{{ m.name }}" {{ 'selected' if m.name == default_model }}>{{ m.label }}</option>{% endfor %}
+          </select>
+          <small id="model-desc" class="muted"></small>
+        </div>
+        <button id="run" class="btn primary big" type="submit" {{ 'disabled' if not models }}>Diagnose</button>
+        <p class="muted small tip">Best results: one leaf, in focus, filling most of the frame, in daylight.</p>
+      </form>
+
+      <section class="card out" aria-live="polite">
+        <div id="empty" class="empty">
+          <div class="leaf-art" aria-hidden="true">🍃</div>
+          <h2>Ready when you are</h2>
+          <p class="muted">Add a photo of one tomato leaf. Each step is shown here as it runs.</p>
+          <ol class="pipeline-mini"><li>Background removal</li><li>Leaf check</li><li>Prediction</li><li>Grad-CAM</li><li>Treatment</li></ol>
+        </div>
+        <div id="progress" hidden>
+          <div class="bar"><span id="bar"></span></div>
+          <ul id="stages" class="stages"></ul>
+        </div>
+        <div id="result"></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============================ HISTORY ============================ -->
+  <section id="tab-history" class="panel" role="tabpanel" hidden>
+    <div class="head"><h1>History</h1>
+      <div class="row"><input id="hist-search" class="search" type="search" placeholder="Search disease or model…"><button id="hist-clear" class="btn soft small">Clear all</button></div></div>
+    <p class="muted small">Stored only in this browser (nothing is saved on the server).</p>
+    <div id="hist-list" class="hist"></div>
+  </section>
+
+  <!-- ============================ MODELS ============================ -->
+  <section id="tab-models" class="panel" role="tabpanel" hidden>
+    <div class="head"><h1>Models</h1></div>
+    <div class="cards" id="model-cards">
+      {% for m in models %}
+      <article class="card mcard {{ m.kind }}">
+        <span class="tag">{{ 'Proposed' if m.kind == 'proposed' else ('Ablation' if m.kind == 'ablation' else 'Baseline') }}</span>
+        <h3>{{ m.label }}</h3>
+        <p class="muted">{{ m.desc }}</p>
+        <dl>
+          {% if m.params %}<dt>Parameters</dt><dd>{{ '{:,.1f}'.format(m.params / 1e6) }} M</dd>{% endif %}
+          {% if m.size_mb %}<dt>Web model size</dt><dd>{{ '%.0f'|format(m.size_mb) }} MB</dd>{% endif %}
+          {% if m.backbone %}<dt>Backbone</dt><dd>{{ m.backbone }}</dd>{% endif %}
+          <dt>Calibrated</dt><dd>{{ ('T = %.2f'|format(m.temperature)) if m.temperature else 'no' }}</dd>
+        </dl>
+      </article>
+      {% endfor %}
+    </div>
+    <div id="perf"></div>
+  </section>
+
+  <!-- ============================ DISEASES ============================ -->
+  <section id="tab-diseases" class="panel" role="tabpanel" hidden>
+    <div class="head"><h1>Diseases &amp; treatment</h1><input id="dis-search" class="search" type="search" placeholder="Search…"></div>
+    <div id="dis-list" class="cards"></div>
+    <p id="dis-disclaimer" class="muted small"></p>
+  </section>
+
+  <!-- ============================ ABOUT ============================ -->
+  <section id="tab-about" class="panel" role="tabpanel" hidden>
+    <div class="card about">
+      <h1>How it works</h1>
+      <ol class="pipeline">
+        <li><b>Photo check</b> — blur, exposure and resolution.</li>
+        <li><b>Background removal</b> — the leaf is cut out; soil, stones, shadows and weeds are removed while diseased spots are kept.</li>
+        <li><b>Is it a tomato leaf?</b> — leaf structure (shape, serrated edge, veins) plus a deep check against the tomato training data. Anything else is rejected with an explanation.</li>
+        <li><b>Diagnosis</b> — the proposed LAG-HViT (lesion-attention-guided hybrid CNN–Vision Transformer) or any baseline model; confidence is temperature-calibrated. Below {{ '%.0f'|format(conf_threshold * 100) }}% the app says it is not sure.</li>
+        <li><b>Explanation</b> — Grad-CAM shows where the model looked; the Leaf-Focus Score says how much of that attention is on the leaf, and disease regions are highlighted.</li>
+        <li><b>Treatment</b> — management advice for the predicted disease.</li>
+      </ol>
+      <p class="muted small">Gate mode on this server: {{ status.gate_mode }}.</p>
+      <div class="author"><span class="avatar">DK</span><div><b>{{ author }}</b><div class="muted">MIT in Artificial Intelligence · Gandaki University</div><div class="muted small">A decision-support tool — confirm with an agronomist before treating.</div></div></div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot"><span>© 2026 TomatoLeafAI · {{ author }}</span><span class="muted"><a href="/health">Health</a> · <a href="/api/models">API</a></span></footer>
+
+<dialog id="cam-dialog" class="dialog">
+  <div class="dialog-head"><b>Take a photo</b><button class="icon-btn" data-close aria-label="Close">✕</button></div>
+  <video id="video" autoplay playsinline muted></video>
+  <p id="cam-err" class="banner error" hidden></p>
+  <button id="snap" class="btn primary big">Capture</button>
+</dialog>
+<dialog id="lightbox" class="dialog lightbox"><button class="icon-btn" data-close aria-label="Close">✕</button><img id="lb-img" alt=""><p id="lb-cap" class="muted"></p></dialog>
+
+<script id="cfg" type="application/json">{{ {'models': models, 'default_model': default_model, 'classes': classes, 'conf_threshold': conf_threshold}|tojson }}</script>
+<script src="/static/app.js?v=21"></script>
+</body>
+</html>

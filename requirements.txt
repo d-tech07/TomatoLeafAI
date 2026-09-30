@@ -1,0 +1,6 @@
+# Web runtime (local + Vercel). No TensorFlow: models run with LiteRT (.tflite).
+flask>=3.0,<4
+numpy>=1.26,<3
+pillow>=10.3
+opencv-python-headless>=4.9,<5
+ai-edge-litert>=1.2

@@ -1,0 +1,17 @@
+# Files NOT uploaded to Vercel.
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+.env
+tests/
+tools/
+*.keras
+*.h5
+models/
+results/
+
+# Option A (recommended): models are downloaded from MODEL_BASE_URL, so the local copy is not uploaded.
+# Option B (bundle models, Large Functions): delete the next line.
+models_litert/

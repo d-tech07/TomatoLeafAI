@@ -1,0 +1,6 @@
+# Only for tools/export_litert.py (run once on the machine that trained the models).
+# Use the same TensorFlow/Keras versions as the training notebook.
+tensorflow>=2.16
+keras>=3.3
+numpy
+ai-edge-litert>=1.2
